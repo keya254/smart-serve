@@ -23,7 +23,9 @@ import { usePOS } from "@/contexts/POSContext";
 import { toast } from "sonner";
 import { QRCodeSVG } from "qrcode.react";
 
-const API_URL = "http://localhost:3000/api";
+import { API_BASE_URL } from '@/config/api';
+
+const API_URL = `${API_BASE_URL}/api`;
 
 const AdminTables = () => {
   const { tables } = usePOS();

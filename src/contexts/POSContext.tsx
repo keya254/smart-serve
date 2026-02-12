@@ -72,8 +72,12 @@ interface POSContextType {
 
 const POSContext = createContext<POSContextType | undefined>(undefined);
 
-const API_URL = 'http://localhost:3000/api';
-const socket = io('http://localhost:3000');
+import { API_BASE_URL, SOCKET_URL } from '@/config/api';
+
+// ... other imports
+
+const API_URL = `${API_BASE_URL}/api`;
+const socket = io(SOCKET_URL);
 
 export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const queryClient = useQueryClient();

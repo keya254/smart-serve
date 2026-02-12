@@ -1,167 +1,234 @@
 import { useParams, useNavigate } from "react-router-dom";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { formatKES } from "@/data/mock";
+import { useQueryClient, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { ShoppingCart, ChefHat, LogIn, ArrowRight } from "lucide-react";
-import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { useToast } from "@/hooks/use-toast";
+import { 
+  ArrowLeft, 
+  Utensils, 
+  CreditCard, 
+  Clock, 
+  Users, 
+  Receipt,
+  ChefHat
+} from "lucide-react";
+import { API_BASE_URL } from '@/config/api';
+import { usePOS } from "@/contexts/POSContext";
+import StatusBadge from "@/components/StatusBadge";
+import { format } from "date-fns";
 
-const API_URL = "http://localhost:3000/api";
+const API_URL = `${API_BASE_URL}/api`;
 
 const TableSession = () => {
-  const { id } = useParams<{ id: string }>();
+  const { tableId } = useParams();
   const navigate = useNavigate();
+  const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { tables, getOrdersByTable } = usePOS();
 
-  const { data: table, isLoading: isLoadingTable } = useQuery({
-    queryKey: ["table", id],
-    queryFn: async () => {
-      // Find table by ID (simulated fetch since API lists all tables usually)
-      const res = await fetch(`${API_URL}/tables`);
-      const tables = await res.json();
-      return tables.find((t: any) => t.id === id);
-    },
-  });
+  const table = tables.find(t => t.id === tableId);
+  const orders = tableId ? getOrdersByTable(tableId) : [];
 
-  const { data: orders = [] } = useQuery({
-    queryKey: ["orders", id],
-    queryFn: async () => {
-      const res = await fetch(`${API_URL}/orders`);
-      const allOrders = await res.json();
-      return allOrders.filter((o: any) => o.tableId === id && o.status !== "completed" && o.status !== "cancelled");
-    },
-    enabled: !!table,
-  });
+  // Calculate bill from orders
+  const billItems = orders.flatMap(order => 
+    order.items.map(item => ({
+      ...item,
+      orderId: order.id
+    }))
+  );
+
+  const totalAmount = billItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
 
   const payMutation = useMutation({
-    mutationFn: async ({ orderId, amount }: { orderId: string; amount: number }) => {
-      // In a real app, this would trigger a payment gateway
-      // Here we simulate successful payment update on the order
-      // We don't have a direct payment endpoint in the mockup, so we just complete the order for now?
-      // Or maybe update payment status.
-      // Let's assume we update status to 'completed' for simplicity of the flow.
-      await fetch(`${API_URL}/orders/${orderId}/status`, {
+    mutationFn: async () => {
+      // In a real app, this would initiate a payment flow
+      // For now, we'll just update the table status
+      const res = await fetch(`${API_URL}/tables/${tableId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "completed" }),
+        body: JSON.stringify({ 
+          status: "available",
+          guests: null,
+          orderTotal: null,
+          session_id: null
+        }),
       });
-      
-      // Also free up the table
-       await fetch(`${API_URL}/tables/${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "available", orderTotal: 0, guests: 0 }),
-      });
+      if (!res.ok) throw new Error("Failed to process payment");
+      return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["orders"] });
-      queryClient.invalidateQueries({ queryKey: ["table"] });
-      toast.success("Payment successful! Thank you for dining with us.");
+      queryClient.invalidateQueries({ queryKey: ["tables"] });
+      queryClient.invalidateQueries({ queryKey: ["orders"] }); // Also invalidate orders
+      toast({
+        title: "Payment Successful",
+        description: "Table has been cleared.",
+      });
+      navigate("/");
+    },
+    onError: () => {
+      toast({
+        title: "Payment Failed",
+        description: "Please try again.",
+        variant: "destructive",
+      });
     },
   });
 
-  if (isLoadingTable) return <div className="p-8 text-center">Loading table info...</div>;
-  if (!table) return <div className="p-8 text-center text-destructive">Table not found</div>;
-
-  const totalDue = orders.reduce((sum: number, o: any) => sum + (o.totalAmount || 0), 0);
+  if (!table) return <div>Loading...</div>;
 
   return (
-    <div className="min-h-screen bg-background flex flex-col items-center p-4">
-      <div className="w-full max-w-md space-y-8 mt-10">
-        <div className="text-center space-y-2">
-          <div className="h-20 w-20 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
-            <ChefHat className="h-10 w-10 text-primary" />
+    <div className="min-h-screen bg-gray-50/50 p-4 md:p-8">
+      <div className="max-w-4xl mx-auto space-y-6">
+        <Button 
+          variant="ghost" 
+          onClick={() => navigate("/")}
+          className="hover:bg-transparent hover:text-primary -ml-4"
+        >
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Back to Dashboard
+        </Button>
+
+        <div className="flex flex-col md:flex-row gap-6 md:items-start justify-between">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Table {table.number}</h1>
+            <p className="text-muted-foreground mt-1">Session started {table.lastActivity}</p>
           </div>
-          <h1 className="text-3xl font-extrabold tracking-tight">Savanna Grill</h1>
-          <p className="text-muted-foreground">Table {table.number}</p>
+          <StatusBadge status={table.status} className="self-start text-sm px-3 py-1" />
         </div>
 
-        {table.status === "available" ? (
-          <div className="text-center space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="p-6 bg-card rounded-2xl border border-border shadow-sm">
-              <h2 className="text-xl font-semibold mb-2">Welcome!</h2>
-              <p className="text-muted-foreground mb-6">
-                This table is currently available. Scan the menu to start ordering.
-              </p>
-              <Button 
-                size="lg" 
-                className="w-full font-bold rounded-xl"
-                onClick={() => navigate(`/menu?tableId=${id}`)}
-              >
-                View Menu & Order <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
-              <div className="p-6 border-b border-border bg-muted/30">
-                <div className="flex justify-between items-center">
-                  <span className="font-semibold text-lg">Your Bill</span>
-                  <Badge variant={totalDue > 0 ? "destructive" : "secondary"}>
-                    {totalDue > 0 ? "Pending" : "Paid"}
-                  </Badge>
+        <div className="grid gap-6 md:grid-cols-2">
+          {/* Session Details */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Users className="h-5 w-5 text-muted-foreground" />
+                Session Details
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <span className="text-sm text-muted-foreground">Guests</span>
+                  <p className="font-medium text-lg">{table.guests || "-"}</p>
+                </div>
+                <div className="space-y-1">
+                  <span className="text-sm text-muted-foreground">Waiter</span>
+                  <p className="font-medium text-lg">{table.waiter || "Not Assigned"}</p>
                 </div>
               </div>
-              
-              <div className="p-6 space-y-4">
-                {orders.length > 0 ? (
-                  orders.map((order: any) => (
-                    <div key={order.id} className="space-y-3">
-                      <div className="flex justify-between text-sm text-muted-foreground font-medium">
-                        <span>Order #{order.id.slice(0, 4)}</span>
-                        <span>{new Date(order.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-                      </div>
-                      <div className="space-y-2 pl-2 border-l-2 border-border">
-                        {order.items.map((item: any, idx: number) => (
-                          <div key={idx} className="flex justify-between text-sm">
-                            <span>{item.quantity}x {item.name}</span>
-                            <span>{formatKES(item.price * item.quantity)}</span>
-                          </div>
-                        ))}
-                      </div>
-                      <div className="border-t border-border border-dashed my-2" />
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-center text-muted-foreground py-4">No active orders.</p>
-                )}
-                
-                <div className="flex justify-between items-center text-xl font-bold pt-2">
-                  <span>Total Due</span>
-                  <span>{formatKES(totalDue)}</span>
-                </div>
-              </div>
+            </CardContent>
+          </Card>
 
-              <div className="p-6 bg-muted/30 border-t border-border">
-                {totalDue > 0 ? (
-                   <Button 
-                    size="lg" 
-                    className="w-full font-bold rounded-xl"
-                    onClick={() => {
-                        // Pay all orders? For simplicity, we just pay the first one or loop?
-                        // The mutation expects orderId.
-                        // Let's just simulate paying the whole table.
-                        orders.forEach((o: any) => payMutation.mutate({ orderId: o.id, amount: o.totalAmount }));
-                    }}
-                    disabled={payMutation.isPending}
-                  >
-                    {payMutation.isPending ? "Processing..." : `Pay ${formatKES(totalDue)}`}
-                  </Button>
+          {/* Quick Actions */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Utensils className="h-5 w-5 text-muted-foreground" />
+                Actions
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Button 
+                className="w-full justify-start" 
+                variant="outline"
+                onClick={() => navigate(`/menu?tableId=${tableId}`)}
+              >
+                <Utensils className="mr-2 h-4 w-4" />
+                Add Items to Order
+              </Button>
+              <Button 
+                className="w-full justify-start" 
+                variant="outline"
+              >
+                <ChefHat className="mr-2 h-4 w-4" />
+                Call Waiter
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Active Orders Status */}
+        <Card>
+            <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                    <Clock className="h-5 w-5 text-muted-foreground" />
+                    Active Orders
+                </CardTitle>
+                <CardDescription>Track the progress of your kitchen orders</CardDescription>
+            </CardHeader>
+            <CardContent>
+                {orders.length === 0 ? (
+                    <p className="text-center text-muted-foreground py-4">No active orders</p>
                 ) : (
-                  <Button 
-                    variant="outline" 
-                    size="lg" 
-                    className="w-full font-bold rounded-xl"
-                    onClick={() => navigate(`/menu?tableId=${id}`)}
-                  >
-                    Order More Items
-                  </Button>
+                    <div className="space-y-6">
+                        {orders.map((order) => (
+                            <div key={order.id} className="border rounded-lg p-4 space-y-3">
+                                <div className="flex justify-between items-center pb-2 border-b">
+                                    <div className="space-y-0.5">
+                                        <span className="text-sm font-medium">Order #{order.id.slice(0, 8)}</span>
+                                        <p className="text-xs text-muted-foreground">
+                                            {order.createdAt ? format(new Date(order.createdAt), 'h:mm a') : 'Just now'}
+                                        </p>
+                                    </div>
+                                    <StatusBadge status={order.status} />
+                                </div>
+                                <div className="space-y-2">
+                                    {order.items.map((item, idx) => (
+                                        <div key={idx} className="flex justify-between items-center text-sm">
+                                            <div className="flex items-center gap-2">
+                                                <span className="font-medium">{item.quantity}x</span>
+                                                <span>{item.name}</span>
+                                            </div>
+                                            <StatusBadge status={item.status} className="scale-90" />
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
                 )}
-              </div>
+            </CardContent>
+        </Card>
+
+        {/* Bill Summary */}
+        <Card className="border-t-4 border-t-primary/20">
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Receipt className="h-5 w-5 text-muted-foreground" />
+              Bill Summary
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              {billItems.map((item, i) => (
+                <div key={i} className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">
+                    {item.quantity}x {item.name}
+                  </span>
+                  <span>KES {(item.price * item.quantity).toLocaleString()}</span>
+                </div>
+              ))}
+              {billItems.length === 0 && (
+                <p className="text-sm text-muted-foreground italic">No items ordered yet</p>
+              )}
             </div>
-          </div>
-        )}
+            
+            <div className="border-t pt-4 flex justify-between items-center font-bold text-lg">
+              <span>Total</span>
+              <span>KES {totalAmount.toLocaleString()}</span>
+            </div>
+
+            <Button 
+              className="w-full mt-4" 
+              size="lg"
+              disabled={billItems.length === 0}
+              onClick={() => payMutation.mutate()}
+            >
+              <CreditCard className="mr-2 h-4 w-4" />
+              Pay Bill
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

@@ -16,7 +16,9 @@ import { formatKES } from "@/data/mock";
 import { useState } from "react";
 import { toast } from "sonner";
 
-const API_URL = "http://localhost:3000/api";
+import { API_BASE_URL } from '@/config/api';
+
+const API_URL = `${API_BASE_URL}/api`;
 
 const AdminMenu = () => {
   const { menuItems } = usePOS();
