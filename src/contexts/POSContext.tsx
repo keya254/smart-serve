@@ -1,15 +1,39 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { menuItems, MenuItem, TableInfo, tables as initialTables } from '../data/mock';
+import React, { createContext, useContext, useEffect, ReactNode } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { io } from 'socket.io-client';
 
-// Enhanced Types
+// Types
 export type OrderStatus = 'pending_approval' | 'kitchen_pending' | 'preparing' | 'ready' | 'delivered' | 'completed' | 'cancelled';
 export type PaymentStatus = 'unpaid' | 'partially_paid' | 'paid';
 export type PaymentMethod = 'cash' | 'card' | 'mpesa';
+
+export interface MenuItem {
+  id: string;
+  name: string;
+  description: string;
+  price: number;
+  category: string;
+  image?: string;
+  popular?: boolean;
+  available?: boolean;
+}
 
 export interface OrderItem extends MenuItem {
   quantity: number;
   notes?: string;
   status: 'pending' | 'preparing' | 'ready' | 'served';
+}
+
+export interface TableInfo {
+  id: string;
+  number: number;
+  seats: number;
+  status: "available" | "occupied" | "needs-attention" | "billing";
+  sessionId?: string;
+  waiter?: string;
+  guests?: number;
+  orderTotal?: number;
+  lastActivity?: string;
 }
 
 export interface Order {
@@ -21,24 +45,16 @@ export interface Order {
   paymentStatus: PaymentStatus;
   totalAmount: number;
   paidAmount: number;
-  createdAt: string; // ISO String
+  createdAt: string;
   waiterId?: string;
-  guestName?: string; // For tracking who ordered if needed
-}
-
-interface Payment {
-  id: string;
-  orderId: string;
-  amount: number;
-  method: PaymentMethod;
-  phoneNumber?: string; // For M-Pesa
-  timestamp: string;
+  guestName?: string;
 }
 
 interface POSContextType {
   tables: TableInfo[];
   orders: Order[];
   menuItems: MenuItem[];
+  categories: string[];
   
   // Actions
   placeOrder: (tableId: string, items: OrderItem[]) => Promise<void>;
@@ -49,112 +65,166 @@ interface POSContextType {
   getOrdersByTable: (tableId: string) => Order[];
   getOrdersByWaiter: (waiterId: string) => Order[];
   getKitchenOrders: () => Order[];
+  
+  // Loading states
+  isLoading: boolean;
 }
 
 const POSContext = createContext<POSContextType | undefined>(undefined);
 
+const API_URL = 'http://localhost:3000/api';
+const socket = io('http://localhost:3000');
+
 export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  // Initialize state with some dummy data for "Live" feel, or empty if starting fresh
-  const [tables, setTables] = useState<TableInfo[]>(initialTables);
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [payments, setPayments] = useState<Payment[]>([]);
+  const queryClient = useQueryClient();
 
-  // Load from local storage on mount (persistence simulation)
+  // Socket listeners
   useEffect(() => {
-    const savedOrders = localStorage.getItem('pos_orders');
-    const savedTables = localStorage.getItem('pos_tables');
-    if (savedOrders) setOrders(JSON.parse(savedOrders));
-    // Merge saved tables with initial tables to keep structure if needed, or just use saved
-    if (savedTables) setTables(JSON.parse(savedTables));
-  }, []);
+    socket.on('connect', () => {
+      console.log('Connected to server');
+    });
 
-  // Save to local storage on change
-  useEffect(() => {
-    localStorage.setItem('pos_orders', JSON.stringify(orders));
-    localStorage.setItem('pos_tables', JSON.stringify(tables));
-  }, [orders, tables]);
+    socket.on('menu_updated', () => queryClient.invalidateQueries({ queryKey: ['menuItems'] }));
+    socket.on('tables_updated', () => queryClient.invalidateQueries({ queryKey: ['tables'] }));
+    socket.on('orders_updated', () => queryClient.invalidateQueries({ queryKey: ['orders'] }));
 
-  const placeOrder = async (tableId: string, items: OrderItem[]) => {
-    const table = tables.find(t => t.id === tableId);
-    if (!table) throw new Error("Table not found");
-
-    const newOrder: Order = {
-      id: Math.random().toString(36).substr(2, 9),
-      tableId,
-      tableNumber: table.number,
-      items: items.map(i => ({ ...i, status: 'pending' })),
-      status: 'pending_approval', // Goes to waiter first
-      paymentStatus: 'unpaid',
-      totalAmount: items.reduce((sum, item) => sum + (item.price * item.quantity), 0),
-      paidAmount: 0,
-      createdAt: new Date().toISOString(),
-      waiterId: table.waiter,
+    return () => {
+      socket.off('connect');
+      socket.off('menu_updated');
+      socket.off('tables_updated');
+      socket.off('orders_updated');
     };
+  }, [queryClient]);
 
-    setOrders(prev => [...prev, newOrder]);
-    
-    // Update table status
-    setTables(prev => prev.map(t => 
-      t.id === tableId 
-        ? { ...t, status: 'needs-attention', orderTotal: (t.orderTotal || 0) + newOrder.totalAmount, lastActivity: 'Just now' } 
-        : t
-    ));
+  // Queries
+  const { data: menuItems = [] } = useQuery({
+    queryKey: ['menuItems'],
+    queryFn: async () => {
+      const res = await fetch(`${API_URL}/menu-items`);
+      return res.json();
+    }
+  });
+
+  const { data: categories = [] } = useQuery({
+    queryKey: ['categories'],
+    queryFn: async () => {
+      const res = await fetch(`${API_URL}/categories`);
+      return res.json();
+    }
+  });
+
+  const { data: tables = [] } = useQuery({
+    queryKey: ['tables'],
+    queryFn: async () => {
+      const res = await fetch(`${API_URL}/tables`);
+      const data = await res.json();
+      return data.map((t: any) => ({
+        id: t.id,
+        number: t.number,
+        seats: t.seats,
+        status: t.status,
+        sessionId: t.session_id,
+        waiter: t.waiter,
+        guests: t.guests,
+        orderTotal: t.order_total,
+        lastActivity: t.last_activity
+      }));
+    }
+  });
+
+  const { data: orders = [] } = useQuery({
+    queryKey: ['orders'],
+    queryFn: async () => {
+      const res = await fetch(`${API_URL}/orders`);
+      return res.json();
+    }
+  });
+
+  // Mutations
+  const placeOrderMutation = useMutation({
+    mutationFn: async ({ tableId, items }: { tableId: string, items: OrderItem[] }) => {
+      await fetch(`${API_URL}/orders`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tableId, items, priority: 'normal' }),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      queryClient.invalidateQueries({ queryKey: ['tables'] });
+    }
+  });
+
+  const updateOrderStatusMutation = useMutation({
+    mutationFn: async ({ orderId, status }: { orderId: string, status: OrderStatus }) => {
+      await fetch(`${API_URL}/orders/${orderId}/status`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['orders'] })
+  });
+  
+  const updateOrderItemStatusMutation = useMutation({
+      mutationFn: async ({ orderId, itemId, status }: { orderId: string, itemId: string, status: OrderItem['status'] }) => {
+           await fetch(`${API_URL}/order-items/${itemId}/status`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ status }),
+            });
+      },
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: ['orders'] })
+  });
+
+  const updateTableMutation = useMutation({
+    mutationFn: async ({ tableId, updates }: { tableId: string, updates: Partial<TableInfo> }) => {
+      await fetch(`${API_URL}/tables/${tableId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      });
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tables'] })
+  });
+
+  // Actions
+  const placeOrder = async (tableId: string, items: OrderItem[]) => {
+    await placeOrderMutation.mutateAsync({ tableId, items });
   };
 
   const updateOrderStatus = (orderId: string, status: OrderStatus) => {
-    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status } : o));
+    updateOrderStatusMutation.mutate({ orderId, status });
   };
 
   const updateOrderItemStatus = (orderId: string, itemId: string, status: OrderItem['status']) => {
-    setOrders(prev => prev.map(o => {
-      if (o.id !== orderId) return o;
-      const updatedItems = o.items.map(i => i.id === itemId ? { ...i, status } : i);
-      
-      // Auto-update order status based on items? 
-      // Simplified: If all items ready -> Order Ready
-      const allReady = updatedItems.every(i => i.status === 'ready' || i.status === 'served');
-      const orderStatus = allReady ? 'ready' : o.status === 'pending_approval' ? 'kitchen_pending' : o.status;
-
-      return { ...o, items: updatedItems, status: orderStatus };
-    }));
+    updateOrderItemStatusMutation.mutate({ orderId, itemId, status });
   };
 
   const assignWaiter = (tableId: string, waiterId: string) => {
-    setTables(prev => prev.map(t => t.id === tableId ? { ...t, waiter: waiterId } : t));
+    updateTableMutation.mutate({ tableId, updates: { waiter: waiterId } });
   };
 
   const processPayment = async (orderId: string, amount: number, method: PaymentMethod, phoneNumber?: string): Promise<boolean> => {
-    // Simulate API call delay
-    await new Promise(resolve => setTimeout(resolve, 1500));
-
-    setOrders(prev => prev.map(o => {
-      if (o.id !== orderId) return o;
-      const newPaidAmount = o.paidAmount + amount;
-      const isFullyPaid = newPaidAmount >= o.totalAmount;
-      
-      return {
-        ...o,
-        paidAmount: newPaidAmount,
-        paymentStatus: isFullyPaid ? 'paid' : 'partially_paid',
-        status: isFullyPaid ? 'completed' : o.status
-      };
-    }));
-    
-    // If fully paid, free up the table? Or let waiter do it? 
-    // Usually waiter clears the table.
-    
+    // Placeholder for payment logic
+    // In real app, call payment API
+    console.log('Processing payment', { orderId, amount, method, phoneNumber });
+    // Simulate updating order status to paid locally or via API
+    // For now, just update status if full amount?
+    // We need a payment endpoint.
     return true;
   };
 
-  const getOrdersByTable = (tableId: string) => orders.filter(o => o.tableId === tableId);
-  const getOrdersByWaiter = (waiterId: string) => orders.filter(o => o.waiterId === waiterId);
-  const getKitchenOrders = () => orders.filter(o => ['kitchen_pending', 'preparing'].includes(o.status));
+  const getOrdersByTable = (tableId: string) => orders.filter((o: Order) => o.tableId === tableId);
+  const getOrdersByWaiter = (waiterId: string) => orders.filter((o: Order) => o.waiterId === waiterId);
+  const getKitchenOrders = () => orders.filter((o: Order) => ['kitchen_pending', 'preparing', 'pending'].includes(o.status));
 
   return (
     <POSContext.Provider value={{
       tables,
       orders,
       menuItems,
+      categories,
       placeOrder,
       updateOrderStatus,
       updateOrderItemStatus,
@@ -162,7 +232,8 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       processPayment,
       getOrdersByTable,
       getOrdersByWaiter,
-      getKitchenOrders
+      getKitchenOrders,
+      isLoading: false // Simplified
     }}>
       {children}
     </POSContext.Provider>

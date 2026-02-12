@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { MenuItem } from "@/data/mock";
+import { MenuItem } from "@/contexts/POSContext";
 
 export interface CartItem extends MenuItem {
   quantity: number;

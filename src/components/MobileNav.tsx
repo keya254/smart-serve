@@ -1,19 +1,15 @@
 import { Link, useLocation } from "react-router-dom";
-import { LayoutDashboard, UtensilsCrossed, Users, ChefHat, ClipboardList } from "lucide-react";
+import { NavItem } from "@/config/dashboardConfig";
 
-const items = [
-  { label: "Dashboard", icon: LayoutDashboard, path: "/admin" },
-  { label: "Menu", icon: UtensilsCrossed, path: "/menu" },
-  { label: "Waiter", icon: Users, path: "/waiter" },
-  { label: "Kitchen", icon: ChefHat, path: "/kitchen" },
-  { label: "Orders", icon: ClipboardList, path: "/orders" },
-];
+interface MobileNavProps {
+  navItems: NavItem[];
+}
 
-const MobileNav = () => {
+const MobileNav = ({ navItems }: MobileNavProps) => {
   const location = useLocation();
   return (
     <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-card border-t border-border flex items-center justify-around py-2 px-1">
-      {items.map((item) => {
+      {navItems.map((item) => {
         const isActive = location.pathname === item.path || location.pathname.startsWith(item.path + "/");
         return (
           <Link

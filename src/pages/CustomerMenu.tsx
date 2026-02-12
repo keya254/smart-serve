@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { menuItems, menuCategories, formatKES } from "@/data/mock";
+import { formatKES } from "@/data/mock";
 import { ShoppingCart, Plus, Minus, Search, Star, ChefHat, LogIn, LayoutDashboard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,7 +18,7 @@ const CustomerMenu = () => {
   const navigate = useNavigate();
   
   const { cart, addToCart, removeFromCart, totalItems, totalAmount } = useCart();
-  const { getOrdersByTable, tables } = usePOS();
+  const { getOrdersByTable, tables, menuItems, categories } = usePOS();
   const { user } = useAuth();
   
   const activeOrders = getOrdersByTable(tableId).filter(o => o.status !== 'completed' && o.status !== 'cancelled' && o.status !== 'delivered');
@@ -103,7 +103,7 @@ const CustomerMenu = () => {
       {/* Categories */}
       <div className="sticky top-[110px] z-30 bg-background/95 backdrop-blur border-b border-border py-2">
         <div className="w-full max-w-[2000px] mx-auto flex gap-2 px-4 md:px-8 overflow-x-auto scrollbar-hide pb-1">
-          {menuCategories.map((cat) => (
+          {categories.map((cat) => (
             <button
               key={cat}
               onClick={() => setActiveCategory(cat)}

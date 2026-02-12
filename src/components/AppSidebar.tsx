@@ -1,27 +1,16 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   UtensilsCrossed,
-  LayoutDashboard,
-  ChefHat,
-  ClipboardList,
-  QrCode,
-  Settings,
-  Users,
   LogOut,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { NavItem } from "@/config/dashboardConfig";
 
-const navItems = [
-  { label: "Dashboard", icon: LayoutDashboard, path: "/admin" },
-  { label: "Menu", icon: UtensilsCrossed, path: "/menu" },
-  { label: "Waiter", icon: Users, path: "/waiter" },
-  { label: "Kitchen", icon: ChefHat, path: "/kitchen" },
-  { label: "Orders", icon: ClipboardList, path: "/orders" },
-  { label: "Tables & QR", icon: QrCode, path: "/admin/tables" },
-  { label: "Settings", icon: Settings, path: "/settings" },
-];
+interface AppSidebarProps {
+  navItems: NavItem[];
+}
 
-const AppSidebar = () => {
+const AppSidebar = ({ navItems }: AppSidebarProps) => {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, logout } = useAuth();

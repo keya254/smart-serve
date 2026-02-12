@@ -1,4 +1,3 @@
-import DashboardLayout from "@/components/DashboardLayout";
 import StatusBadge from "@/components/StatusBadge";
 import { formatKES } from "@/data/mock";
 import { Bell, MessageSquare, Clock, Users, Check, X } from "lucide-react";
@@ -27,8 +26,7 @@ const WaiterDashboard = () => {
   };
 
   return (
-    <DashboardLayout>
-      <div className="p-6">
+    <div className="p-6">
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-2xl font-bold">Waiter Dashboard</h1>
@@ -143,7 +141,6 @@ const WaiterDashboard = () => {
           ))}
         </div>
       </div>
-    </DashboardLayout>
   );
 };
 

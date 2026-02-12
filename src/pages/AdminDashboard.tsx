@@ -1,9 +1,7 @@
-import DashboardLayout from "@/components/DashboardLayout";
 import StatCard from "@/components/StatCard";
 import { formatKES } from "@/data/mock";
-import { DollarSign, Users, ShoppingCart, TrendingUp, Clock, Plus, UserCircle } from "lucide-react";
+import { DollarSign, Users, ShoppingCart, TrendingUp, Clock, UserCircle } from "lucide-react";
 import { usePOS } from "@/contexts/POSContext";
-import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -12,7 +10,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { useState } from "react";
 
 const waiters = [
   { id: "james", name: "James" },
@@ -34,8 +31,7 @@ const AdminDashboard = () => {
   };
 
   return (
-    <DashboardLayout>
-      <div className="p-6">
+    <div className="p-6">
         <div className="mb-6">
           <h1 className="text-2xl font-bold">Dashboard</h1>
           <p className="text-sm text-muted-foreground">The Savanna Grill · Overview</p>
@@ -69,10 +65,7 @@ const AdminDashboard = () => {
         {/* Table Management */}
         <div className="glass-card rounded-xl mb-8">
            <div className="px-5 py-4 border-b border-border flex justify-between items-center">
-            <h2 className="font-semibold">Table Management</h2>
-            <Button size="sm" onClick={() => toast.info("Create Table Feature Mocked")}>
-              <Plus className="h-4 w-4 mr-1" /> Add Table
-            </Button>
+            <h2 className="font-semibold">Live Floor Status</h2>
           </div>
           <div className="p-5 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
              {tables.map(table => (
@@ -132,7 +125,6 @@ const AdminDashboard = () => {
           </div>
         </div>
       </div>
-    </DashboardLayout>
   );
 };
 
